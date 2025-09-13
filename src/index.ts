@@ -1,111 +1,109 @@
-import express,{request, Request,Response} from 'express';
-import {supabase} from './Utils/supabaseClient';
+import express, { Request, Response } from 'express';
+import { supabase } from './Utils/supabaseClient';
 import dotenv from 'dotenv';
-const app=express();
+const app = express();
 
 
 app.use(express.json());
 dotenv.config();
 
-type RequestBody={
-    name:string,
-    field_1:object,
-    field_2:number,
-    field_3:boolean
+type RequestBody = {
+    name: string,
+    field_1: object,
+    field_2: number,
+    field_3: boolean
 }
 
-type updateRequestBody={
-    fieldToBeUpdated: string,
-    valueUpdated:any,
-    condition:string,
-    conditionValue:any
-}
+function authenticateBody(body: RequestBody): boolean {
 
-function authenticateBody(body:RequestBody):boolean{
-    if (typeof body !== 'object' || body === null) {
-        console.error("Validation failed: Body is not an object.");
-        return false;
-    }
-
-    // field_1 must be a non-null object (representing a JSON object).
-    // We also check it's not an array, as typeof [] is 'object'.
+  
     if (typeof body.field_1 !== 'object' || body.field_1 === null || Array.isArray(body.field_1)) {
         console.error("Validation failed: field_1 must be a JSON object.");
         return false;
     }
 
-    // field_2 must be an integer.
+  
     if (typeof body.field_2 !== 'number' || !Number.isInteger(body.field_2)) {
         console.error("Validation failed: field_2 must be an integer.");
         return false;
     }
 
-    // field_3 must be a boolean.
     if (typeof body.field_3 !== 'boolean') {
         console.error("Validation failed: field_3 must be a boolean.");
         return false;
     }
 
-    // All checks passed
+    
     return true;
 }
 
-app.get("/fetchData",async (req:Request,res:Response)=>{
-    const {data,error}=await supabase.from("Interview_Tests").select("*");
-    console.log(data);
+app.get("/fetchData", async (req: Request, res: Response) => {
+    try {
+        const { data, error } = await supabase.from("Interview_Tests").select("*");
+        if (error) throw error;
+        res.status(200).json(data);
+    } catch (error: any) {
+        console.error("Error fetching data:", error);
+        res.status(500).json({ error: error.message });
+    }
 })
 
-app.post("/insertData",async (req:Request,res:Response)=>{
-
-    const requestBody: RequestBody=req.body.body;
+app.post("/insertData", async (req: Request, res: Response) => {
     
-    try{
-        if(authenticateBody(requestBody)){
-            const {data,error}=await supabase.from("Interview_Tests").insert(requestBody);
+    const requestBody: RequestBody = req.body;
+
+    try {
+        if (!authenticateBody(requestBody)) {
+            // 400 Bad Request for validation failures
+            return res.status(400).json({ error: "Bad Request! Please provide valid details. Check field types." });
         }
-        else{
-            res.status(400).json({message:"Bad Request! Please provide valid details"});
+
+    
+        const { data, error } = await supabase.from("Interview_Tests").insert(requestBody).select();
+
+        if (error) {
+   
+            throw error;
         }
+
+      
+        res.status(201).json({ message: "Data inserted successfully", data });
     }
-    catch(error:any){
-        res.status(500).json({message:error});
+    catch (error: any) {
+        console.error("Error inserting data:", error);
+        
+        res.status(500).json({ error: error.message });
     }
-    
+})
 
-    
+//
+app.put("/updateData/:id", async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const updatePayload = req.body;
 
-});
-
-app.put("/updateData",async (req: Request,res: Response)=>{
-    const requestBody:updateRequestBody=req.body.body;
-    const fieldToBeUpdated=requestBody.fieldToBeUpdated
-    const valueUpdated=requestBody.valueUpdated
-    const condition=requestBody.condition
-    const conditionValue=requestBody.conditionValue
-
-    try{
+    try {
+        
         const { data, error } = await supabase
-    .from('Interview_Tests"')
-    .update({ fieldToBeUpdated: valueUpdated })  // columns to update
-    .eq(condition, conditionValue)  // condition (WHERE)
+            .from('Interview_Tests') 
+            .update(updatePayload)
+            .eq('id', id) 
+            .select();
 
+        if (error) throw error;
 
-    res.status(200).json({message:"Updated"})
-    }
-    catch(error:any){
-        res.status(500).json({error});
+        if (!data || data.length === 0) {
+            
+            return res.status(404).json({ error: `Record with id ${id} not found.` });
+        }
+
+        res.status(200).json({ message: "Data updated successfully", data });
+    } catch (error: any) {
+        console.error("Error updating data:", error);
+        res.status(500).json({ error: error.message });
     }
 })
 
-
-
-
-
-app.listen(8000,(err)=>{
-    if(err){
-        console.log(err);
-    }
-    else{
-        console.log("The server has successfully started running on port 8000");
-    }
+const PORT = process.env.PORT || 8000;
+app.listen(PORT, () => {
+    console.log(`The server has successfully started running on port ${PORT}`);
 })
